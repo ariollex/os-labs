@@ -78,7 +78,6 @@ int main(int argc, char** argv) {
                 write(STDERR_FILENO, msg, sizeof(msg));
                 exit(EXIT_FAILURE);
             }
-
         } break;
         default: {
             close(parent_to_child[0]);
