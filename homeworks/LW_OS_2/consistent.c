@@ -6,8 +6,12 @@
 #include <ctype.h>
 #include "utils.c"
 #include <time.h>
-#define UINT128_MAX ((__uint128_t)-1)
-#define WORD 33
+
+#define UINT128_MAX  ((__uint128_t)-1)
+#define INT128_MAX   ((__int128_t)(UINT128_MAX >> 1))
+#define INT128_MIN   (-INT128_MAX - 1)
+
+#define WORD 34
 
 int main(int argc, char** argv) {
     struct timespec start, end;
@@ -17,7 +21,7 @@ int main(int argc, char** argv) {
     const char *path = NULL;
 	if (argc != 4) {
 		char msg[1024];
-		uint32_t len = snprintf(msg, sizeof(msg) - 1, "usage: %s -m CHUNK_SIZE filename\n", argv[0]);
+		int32_t len = snprintf(msg, sizeof(msg) - 1, "usage: %s -m CHUNK_SIZE filename\n", argv[0]);
 		write(STDERR_FILENO, msg, len);
 		exit(EXIT_SUCCESS);
 	}
@@ -41,8 +45,8 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    __uint128_t amount = 0;
-    __uint128_t count = 0;
+    __int128_t amount = 0;
+    __int128_t count = 0;
 
     char buf[CHUNK_SIZE];
     ssize_t bytes;
@@ -65,9 +69,9 @@ int main(int argc, char** argv) {
                 if (index == 0) continue;
                 number[index++] = '\0';
                 char* endptr;
-                __uint128_t dec = toDecimal(number, &endptr, 16);
-                if (amount > UINT128_MAX - dec || *endptr != '\0') {
-                    if (amount > UINT128_MAX - dec) printf("Error: amount (int128) overflow!");
+                __int128_t dec = toDecimal(number, &endptr, 16);
+                if (dec >= 0 && (amount > INT128_MAX - dec) || (dec < 0 && (amount < INT128_MIN - dec)) || (*endptr != '\0')) {
+                    if (amount > INT128_MAX - dec) printf("Error: amount (int128) overflow!\n");
                     if (*endptr != '\0') perror("Error: failed to read number");
                     free(number);
                     close(fd);
@@ -77,7 +81,7 @@ int main(int argc, char** argv) {
                 ++count;
                 index = 0;
             } else {
-                if (index < WORD - 1) {
+                if (index < WORD - 2) {
                     number[index++] = c;
                 } else {
                     printf("Error: failed to read number");

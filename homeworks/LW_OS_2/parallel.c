@@ -9,8 +9,10 @@
 
 #include "utils.c"
 
-#define UINT128_MAX ((__uint128_t)-1)
-#define WORD 33 // 128 бит в 16ричной - по 4 бита в ячейке, т.е. длина 128/4=32 + место для '\0'
+#define UINT128_MAX  ((__uint128_t)-1)
+#define INT128_MAX   ((__int128_t)(UINT128_MAX >> 1))
+#define INT128_MIN   (-INT128_MAX - 1)
+#define WORD 34
 
 typedef struct {
     int fd;
@@ -18,8 +20,8 @@ typedef struct {
     off_t start;
     off_t end;
     size_t chunk;
-    __uint128_t amount;
-    __uint128_t count;
+    __int128_t amount;
+    __int128_t count;
 } ThreadArgs;
 
 static void *work(void *_args)
@@ -41,7 +43,6 @@ static void *work(void *_args)
     off_t pos = args->start;
     int skip_start = 0;
 
-    // Может быть такое, что, если число находилось на границе потоков, прошлый его дочитал и уже обработал, значит, тут его надо скипнуть
     if (args->start > 0) {
         unsigned char prev;
         ssize_t prev_byte = pread(args->fd, &prev, 1, args->start - 1);
@@ -49,7 +50,6 @@ static void *work(void *_args)
     }
 
     while (pos < args->end + WORD) {
-        // если число на границе раздела потоков, надо его дочитать, а следующий поток скипнет его начало
         size_t safe_chunk = (args->end + WORD < pos + args->chunk ? args->end + WORD - pos : args->chunk);
         if (safe_chunk <= 0) { free(number); free(buf); return NULL; }
 
@@ -75,8 +75,8 @@ static void *work(void *_args)
                 if (started < args->end) {
                     number[index] = '\0';
                     char *endptr = NULL;
-                    __uint128_t dec = toDecimal(number, &endptr, 16);
-                    if (*endptr != '\0' || args->amount > UINT128_MAX - dec) {
+                    __int128_t dec = toDecimal(number, &endptr, 16);
+                    if (dec >= 0 && (args->amount > INT128_MAX - dec) || (dec < 0 && (args->amount < INT128_MIN - dec)) || (*endptr != '\0')) {
                         args->status = (*endptr != '\0') ? 3 : 2;
                         free(number); free(buf); return NULL;
                     }
@@ -85,7 +85,7 @@ static void *work(void *_args)
                 }
                 index = 0;
             } else {
-                if (index < WORD - 1) {
+                if (index < WORD - 2) {
                     number[index++] = c;
                 } else {
                     args->status = 3;
@@ -93,7 +93,7 @@ static void *work(void *_args)
                 }
             }
         } while (++i < bytes);
-        
+
         if (!bytes) return NULL;
         pos += bytes;
     }
@@ -164,8 +164,8 @@ int main(int argc, char** argv) {
         pthread_join(threads[i], NULL);
     }
 
-    __uint128_t amount = 0;
-    __uint128_t count = 0;
+    __int128_t amount = 0;
+    __int128_t count = 0;
     int error = 0;
     for(int i = 0; i < n_threads; ++i) {
         int status = thread_args[i].status;
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
             const char msg[] = "Error: failed to open file\n";
             write(STDERR_FILENO, msg, sizeof(msg));
             break;
-        } else if (status == 2 || amount > UINT128_MAX - thread_args[i].amount) {
+        } else if (status == 2 || (thread_args[i].amount >= 0 && (amount > INT128_MAX - thread_args[i].amount) || (thread_args[i].amount < 0 && (amount < INT128_MIN - thread_args[i].amount )))) {
             const char msg[] = "Error: amount (int128) overflow!\n";
             write(STDERR_FILENO, msg, sizeof(msg));
             break;
@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
 
     if (!error) {
         char msg[1024];
-        char res[64];
+        char res[WORD];
         int128ToString(res, amount / count);
         uint32_t len = snprintf(msg, sizeof(msg), "Arithmetic mean: %s\n", res);
         write(STDOUT_FILENO, msg, len);
