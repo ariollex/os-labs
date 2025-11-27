@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <errno.h>
 
+char shm_name[64];
+char sem_name[64];
 #define SHM_SIZE 4096
 
 #define CHILD_PROGRAM_NAME "child"
@@ -42,9 +44,6 @@ int main(int argc, char** argv) {
 
     pid_t pid = getpid();
 
-    char shm_name[64];
-    char sem_name[64];
-
     snprintf(shm_name, sizeof(shm_name), "/shm_%d", (int)pid);
     snprintf(sem_name, sizeof(sem_name), "/sem_%d", (int)pid);
 
@@ -57,7 +56,7 @@ int main(int argc, char** argv) {
 		write(STDERR_FILENO, msg, sizeof(msg));
 		_exit(EXIT_FAILURE);
 	}
-	
+
 	shm = shm_open(shm_name, O_RDWR | O_CREAT | O_TRUNC, 0600);
 	if (shm == -1) {
 		const char msg[] = "error: failed to create SHM\n";
@@ -123,7 +122,7 @@ int main(int argc, char** argv) {
             memcpy(text, buf, bytes);
             sem_post(sem);
 
-			while(true) { //ждем ответ от chilkd
+			while(true) { //ждем ответ от child
                 sem_wait(sem);
                 uint32_t len = *length;
                 if (len >= SHM_SIZE) { 
@@ -140,7 +139,6 @@ int main(int argc, char** argv) {
             sem_post(sem); 
 			running = false;
 		}
-
 	}
 
     waitpid(child, NULL, 0);
