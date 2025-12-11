@@ -1,4 +1,8 @@
 child
+parent
+*.so
+*main_dynamic
+*main_static
 a.out
 output.txt
 .vscode/
